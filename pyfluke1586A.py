@@ -237,27 +237,29 @@ class Fluke1586A(object):
         
     
     def download_data(self, name=None):
-        raise NotImplementedError('Data download is not yet implemented for 1586A, use USB export...!')
+        #raise NotImplementedError('Data download is not yet implemented for 1586A, use USB export...!')
         
-        print('Retrieving data from scan file {0}. Progress: '.format(name), end='', flush=True)
-        self.send_message('MEM:LOG:READ? {0}'.format(name), get_response=False)
+        print('Retrieving data from scan file {0}.  '.format(name), end='', flush=True)
+        self.send_message('MEM:LOG:READ? "{0}"'.format(name), get_response=False)
         resp = self.get_response(terminated=False)
-        data = resp.decode().split(';')
+        print('Complete.')
         
-        print('Storing data to: ')
-        pathlib.Path('/downloads/{0}'.format(name).mkdir(parents=True, exist_ok=True)
-        p = Path('/downloads/{0}/{0}_data.csv'.format(name))
-        print('Storing data to: '.format(str(p)))
+        data = resp.decode().replace('\r\r','\r').splitlines()
+        Path('./downloads/{0}'.format(name)).mkdir(parents=True, exist_ok=True)
+        p = Path('./downloads/{0}/{0}_data.csv'.format(name))
+        print('Storing data to: {0}'.format(str(p)))
         with p.open(mode='w') as fh:
                 for line in data:
                     fh.write(line+'\n')
         
-        print('Retrieving setup info from scan file {0}. Progress: '.format(name), end='', flush=True)
-        self.send_message('MEM:LOG:READ:CONF? {0}'.format(name), get_response=False)
+        print('Retrieving setup info from scan file {0}.  '.format(name), end='', flush=True)
+        self.send_message('MEM:LOG:READ:CONF? "{0}"'.format(name), get_response=False)
         resp = self.get_response(terminated=False)
-        conf = resp.decode().split(';')
-        p = Path('/downloads/{0}/{0}_conf.csv'.format(name))
-        print('Storing data to: '.format(str(p)))
+        print('Complete.')
+        
+        conf = resp.decode().replace('\r\r','\r').splitlines()
+        p = Path('./downloads/{0}/{0}_conf.csv'.format(name))
+        print('Storing data to: {0}'.format(str(p)))
         with p.open(mode='w') as fh:
                 for line in conf:
                     fh.write(line+'\n')        
@@ -368,8 +370,7 @@ def download_data():
     data = {}
     
     print('')
-    print('Retrieving information from instrument...')
-    
+    print('Retrieving information from instrument...  ', end='', flush=True)
     resp, cmd = myFluke.send_message('MEM:LOG:NFIL?')
     
     nslots = resp.decode().strip() 
@@ -377,23 +378,27 @@ def download_data():
         nslots = int(nslots)
     except:
         nslots = 0
-        
+
+    print('{0} datasets found.'.format(nslots))     
+    
+    if nslots == 0:
+        return
+    
     for slot in range(1,nslots+1):
-        resp, cmd = myFluke.send_message('MEM:LOG:NAME?')
+        resp, cmd = myFluke.send_message('MEM:LOG:NAME? {0}'.format(slot))
         name = resp.decode().strip()     
-        resp, cmd = myFluke.send_message('MEM:LOG:PROP? {0}'.format(name))
-        data[slot] = {*zip(['size', 'time', 'user'],resp.decode().strip().split(','))}
+        resp, cmd = myFluke.send_message('MEM:LOG:PROP? "{0}"'.format(name))
+        data[slot] = dict(zip(['size', 'time', 'user'],resp.decode().strip().split(',')))
         data[slot]['name'] = name
         print('*', end='', flush=True)
-    print('')
-    print('')    
 
     while True:
+        print('')
+        print('')
         for slot in data.keys():
-            outstr = 
             print('{0:>2d}) Name: {1},  size: {2}, date: {3}'.format(slot, data[slot]['name'],
                                                                            data[slot]['size'],
-                                                                           data[slot]['date'])
+                                                                           data[slot]['time']))
         print(' A) Download all files in from instrument')
         print('')
         print(' 0) EXIT')
@@ -419,6 +424,8 @@ def download_data():
             for slot in data.keys():
                 myFluke.download_data(data[slot]['name'])
         
+def mydebug():
+    pdb.set_trace()
            
 def clear_data():        
     print('THIS FUNCTION IS NOT YET IMPLEMENTED!')
@@ -435,7 +442,8 @@ options = {0: {'action': break_loop,         'title': 'Exit',                   
            3: {'action': check_PC_offset,    'title': 'Check PC offset with Internet time',   'line_after': False},
            4: {'action': check_fluke_offset, 'title': 'Check instrument offset with pc time', 'line_after': False},
            5: {'action': sync_fluke_time,    'title': 'Synchronize instrument time with pc',  'line_after': True},
-           6: {'action': download_data,      'title': 'Download scan data from Instrument',   'line_after': False},
+           6: {'action': download_data,      'title': 'Download scan data from Instrument',   'line_after': True},
+           7: {'action': mydebug,            'title': 'Debug code',                           'line_after': False},
            #7: {'action': clear_data,         'title': 'Clear Autolog data memory',            'line_after': False},
            }
            
