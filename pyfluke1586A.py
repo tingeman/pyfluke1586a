@@ -236,39 +236,53 @@ class Fluke1586A(object):
         return resp
         
     
-    def download_data(self, slot, fname=None):
-        raise NotImplementedError('Data download is not yet implemented for 1586A, use USB export...!')
-        if not isinstance(slot, int):
-            raise ValueError('The data slot must be an integer value!')
-        self.send_message('LOG:AUT:LAB {0:d}'.format(slot))
-        resp, cmd = self.send_message('LOG:AUT:POIN?')
-        print('Retrieving {0:d} data points from Autolog slot {1:d}.'.format(int(resp),slot))
-        resp, cmd = self.send_message('LOG:AUT:PRIN {0:d}'.format(slot), get_response=False)
+    def download_data(self, name=None):
+        #raise NotImplementedError('Data download is not yet implemented for 1586A, use USB export...!')
+        
+        print('Retrieving data from scan file {0}.  '.format(name), end='', flush=True)
+        self.send_message('MEM:LOG:READ? "{0}"'.format(name), get_response=False)
         resp = self.get_response(terminated=False)
+        print('Complete.')
         
-        resp = resp.decode().split('\r')
-        
-        if fname is not None:
-            p = Path(fname)
-            
-        
-            with p.open(mode='w') as fh:
-                for line in resp:
+        data = resp.decode().replace('\r\r','\r').splitlines()
+        Path('./downloads/{0}'.format(name)).mkdir(parents=True, exist_ok=True)
+        p = Path('./downloads/{0}/{0}_data.csv'.format(name))
+        print('Storing data to: {0}'.format(str(p)))
+        with p.open(mode='w') as fh:
+                for line in data:
                     fh.write(line+'\n')
-                    
-            # save channel 1 data separately
-            with p.with_name(p.stem+'_ch1'+p.suffix).open(mode='w') as fh:
-                for line in resp:
-                    if ',1,' in line:
-                        fh.write(line+'\n')
         
-            # save channel 2 data separately        
-            with p.with_name(p.stem+'_ch2'+p.suffix).open(mode='w') as fh:
-                for line in resp:
-                    if ',2,' in line:
-                        fh.write(line+'\n')
-                    
-        return resp
+        print('Retrieving setup info from scan file {0}.  '.format(name), end='', flush=True)
+        self.send_message('MEM:LOG:READ:CONF? "{0}"'.format(name), get_response=False)
+        resp = self.get_response(terminated=False)
+        print('Complete.')
+        
+        conf = resp.decode().replace('\r\r','\r').splitlines()
+        p = Path('./downloads/{0}/{0}_conf.csv'.format(name))
+        print('Storing data to: {0}'.format(str(p)))
+        with p.open(mode='w') as fh:
+                for line in conf:
+                    fh.write(line+'\n')        
+        
+        #if fname is not None:
+        #    p = Path(fname)
+        #    
+        #
+        #    with p.open(mode='w') as fh:
+        #        for line in resp:
+        #            fh.write(line+'\n')
+        #            
+        #    # save channel 1 data separately
+        #    with p.with_name(p.stem+'_ch1'+p.suffix).open(mode='w') as fh:
+        #        for line in resp:
+        #            if ',1,' in line:
+        #                fh.write(line+'\n')
+        #
+        #    # save channel 2 data separately        
+        #    with p.with_name(p.stem+'_ch2'+p.suffix).open(mode='w') as fh:
+        #        for line in resp:
+        #            if ',2,' in line:
+        #                fh.write(line+'\n')
         
 
 def check_Fluke_time(com='COM1'):
@@ -353,51 +367,66 @@ def sync_fluke_time():
     myFluke.sync_datetime()
     
 def download_data(): 
-    raise NotImplementedError('Data download is not yet implemented for 1586A, use USB export...!')
     data = {}
     
     print('')
-    print('Retrieving information from instrument...')
+    print('Retrieving information from instrument...  ', end='', flush=True)
+    resp, cmd = myFluke.send_message('MEM:LOG:NFIL?')
     
-    for slot in range(1,11):
-        myFluke.send_message('LOG:AUT:LAB {0:d}'.format(slot), get_response=False)
-        resp, cmd = myFluke.send_message('LOG:AUT:POIN?')
-        vals = resp.decode().strip() 
-        if int(vals)>0:
-            resp = myFluke.get_values(slot, 1)
-            resp = resp.decode().split('\r')
-            data[slot] = '{0:>2d}) DATA_{0:02d}:  {1} measurements   ({2})'.format(slot, int(vals), resp[0])
-        else:
-            data[slot] = '{0:>2d}) DATA_{0:02d}:  {1} measurements'.format(slot, int(vals))
-        
-        
+    nslots = resp.decode().strip() 
+    try:
+        nslots = int(nslots)
+    except:
+        nslots = 0
+
+    print('{0} datasets found.'.format(nslots))     
+    
+    if nslots == 0:
+        return
+    
+    for slot in range(1,nslots+1):
+        resp, cmd = myFluke.send_message('MEM:LOG:NAME? {0}'.format(slot))
+        name = resp.decode().strip()     
+        resp, cmd = myFluke.send_message('MEM:LOG:PROP? "{0}"'.format(name))
+        data[slot] = dict(zip(['size', 'time', 'user'],resp.decode().strip().split(',')))
+        data[slot]['name'] = name
         print('*', end='', flush=True)
-    print('')
-    print('')
-        
+
     while True:
-        for slot in range(1,11):
-            print(data[slot])
+        print('')
+        print('')
+        for slot in data.keys():
+            print('{0:>2d}) Name: {1},  size: {2}, date: {3}'.format(slot, data[slot]['name'],
+                                                                           data[slot]['size'],
+                                                                           data[slot]['time']))
+        print(' A) Download all files in from instrument')
         print('')
         print(' 0) EXIT')
         print('')
         
-        try:
-            choice = int(input('Data slot to download: '))
-        except ValueError:
-            print('Invalid input!')
-            continue
-        
-        if choice == 0:
+        load_all = False
+        choice = input('Data slot to download: ')
+        if choice == '0':
             return
+        else:
+            try:
+                choice = int(choice)
+            except ValueError:
+                if choice.lower() == 'a':
+                    load_all = True
+                else:
+                    print('Invalid input!')
+                    continue
         
-        fname = 'DATA_{0:02d}_{1:%Y%m%d-%H%M%S}.dat'.format(choice, dt.datetime.now())
-        myFluke.download_data(choice, fname)
-        print('')
-        print('Data saved to file: {0}'.format(fname))
-        print('')
-        print('')
+        if not load_all:
+            myFluke.download_data(data[choice]['name'])
+        else:
+            for slot in data.keys():
+                myFluke.download_data(data[slot]['name'])
         
+def mydebug():
+    pdb.set_trace()
+           
 def clear_data():        
     print('THIS FUNCTION IS NOT YET IMPLEMENTED!')
 
@@ -413,7 +442,8 @@ options = {0: {'action': break_loop,         'title': 'Exit',                   
            3: {'action': check_PC_offset,    'title': 'Check PC offset with Internet time',   'line_after': False},
            4: {'action': check_fluke_offset, 'title': 'Check instrument offset with pc time', 'line_after': False},
            5: {'action': sync_fluke_time,    'title': 'Synchronize instrument time with pc',  'line_after': True},
-           #6: {'action': download_data,      'title': 'Download Autolog data from Instrument','line_after': False},
+           6: {'action': download_data,      'title': 'Download scan data from Instrument',   'line_after': True},
+           7: {'action': mydebug,            'title': 'Debug code',                           'line_after': False},
            #7: {'action': clear_data,         'title': 'Clear Autolog data memory',            'line_after': False},
            }
            
