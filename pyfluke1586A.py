@@ -283,7 +283,20 @@ class Fluke1586A(object):
         #        for line in resp:
         #            if ',2,' in line:
         #                fh.write(line+'\n')
-        
+
+    def initiate_scan(self):
+       cmd = 'INIT'
+       resp,cmd = self.send_message(cmd)
+       logging.info('INIT: {0}   ({1}@{2}:{3})'.format(resp, self.nickname, self.com_port, cmd))
+       return resp, cmd
+    
+    def abort_scan(self):
+       cmd = 'ABOR'
+       resp,cmd = self.send_message(cmd)
+       logging.info('ABOR: {0}   ({1}@{2}:{3})'.format(resp, self.nickname, self.com_port, cmd))
+       return resp, cmd
+
+
 
 def check_Fluke_time(com='COM1'):
     # make sure we start afresh with logging...
@@ -423,6 +436,12 @@ def download_data():
         else:
             for slot in data.keys():
                 myFluke.download_data(data[slot]['name'])
+
+def initiate_scan():
+    myFluke.initiate_scan()
+
+def abort_scan():
+    myFluke.abort_scan()    
         
 def mydebug():
     pdb.set_trace()
@@ -442,8 +461,10 @@ options = {0: {'action': break_loop,         'title': 'Exit',                   
            3: {'action': check_PC_offset,    'title': 'Check PC offset with Internet time',   'line_after': False},
            4: {'action': check_fluke_offset, 'title': 'Check instrument offset with pc time', 'line_after': False},
            5: {'action': sync_fluke_time,    'title': 'Synchronize instrument time with pc',  'line_after': True},
-           6: {'action': download_data,      'title': 'Download scan data from Instrument',   'line_after': True},
-           7: {'action': mydebug,            'title': 'Debug code',                           'line_after': False},
+           6: {'action': initiate_scan,      'title': 'Initiate new scan sequence with current parameters',  'line_after': False},
+           7: {'action': abort_scan,         'title': 'Abort current scan sequence',  'line_after': True},
+           8: {'action': download_data,      'title': 'Download scan data from Instrument',   'line_after': True},
+           9: {'action': mydebug,            'title': 'Debug code',                           'line_after': False},
            #7: {'action': clear_data,         'title': 'Clear Autolog data memory',            'line_after': False},
            }
            
