@@ -18,7 +18,7 @@ import datetime as dt
 from pathlib import Path
 
 TimeOutLimitSecsFluke1586A = 0.5       # max time (in seconds) to wait for response from Fluke unit
-TimeBetweenCommandsSecs = 0.25   # min time (in seconds) between commands to Fluke
+TimeBetweenCommandsSecs = 0.1   # min time (in seconds) between commands to Fluke
 
 # Commands sent to Fluke1586A
 Fluke1586A_RS232_out_commands = {
@@ -136,12 +136,12 @@ class Fluke1586A(object):
         resp = self.serial.read(1)  # this will block execution until reply or timeout
 
         tstart= time.time()
-        timeout = time.time() + 0.5
+        timeout = time.time() + 0.1
         pend = ''
         while True:
             if self.serial.inWaiting() > 0:
                 resp += self.serial.read(self.serial.inWaiting())
-                timeout = time.time() + 0.5
+                timeout = time.time() + 0.1
             if len(resp)>0 and terminated and resp[-1]==13:
                 break
             if time.time() > timeout:
@@ -263,26 +263,6 @@ class Fluke1586A(object):
         with p.open(mode='w') as fh:
                 for line in conf:
                     fh.write(line+'\n')        
-        
-        #if fname is not None:
-        #    p = Path(fname)
-        #    
-        #
-        #    with p.open(mode='w') as fh:
-        #        for line in resp:
-        #            fh.write(line+'\n')
-        #            
-        #    # save channel 1 data separately
-        #    with p.with_name(p.stem+'_ch1'+p.suffix).open(mode='w') as fh:
-        #        for line in resp:
-        #            if ',1,' in line:
-        #                fh.write(line+'\n')
-        #
-        #    # save channel 2 data separately        
-        #    with p.with_name(p.stem+'_ch2'+p.suffix).open(mode='w') as fh:
-        #        for line in resp:
-        #            if ',2,' in line:
-        #                fh.write(line+'\n')
 
     def initiate_scan(self):
        cmd = 'INIT'
@@ -353,8 +333,6 @@ def select_com():
         print('Invalid input!')
         return None
     
-    
-        
 def identify():
     resp, cmd = myFluke.get_identification()
     print('Instrument identification: {0}'.format(resp.decode()))
@@ -403,15 +381,23 @@ def download_data():
         resp, cmd = myFluke.send_message('MEM:LOG:PROP? "{0}"'.format(name))
         data[slot] = dict(zip(['size', 'time', 'user'],resp.decode().strip().split(',')))
         data[slot]['name'] = name
+        data[slot]['slot'] = slot
         print('*', end='', flush=True)
 
+    # Get a list of indices into data, sorted by the filename of the dataset
+    # and reorder the keys so the slots are listed sorted after the filename/date
+    old_data = data.copy()
+    id_list = sorted(data, key=lambda k: data[k]['name'])
+    data = {k:old_data[slot] for k,slot in enumerate(id_list)}
+    
     while True:
         print('')
         print('')
-        for slot in data.keys():
-            print('{0:>2d}) Name: {1},  size: {2}, date: {3}'.format(slot, data[slot]['name'],
-                                                                           data[slot]['size'],
-                                                                           data[slot]['time']))
+        for slot in sorted(data.keys()):
+            print('{0:>2d}) Name: {1},  size: {2:10s}, date: {3}, slot: {4:3d}'.format(slot, data[slot]['name'],
+                                                                                             data[slot]['size'],
+                                                                                             data[slot]['time'],
+                                                                                             data[slot]['slot']))
         print(' A) Download all files in from instrument')
         print('')
         print(' 0) EXIT')
@@ -420,7 +406,7 @@ def download_data():
         load_all = False
         choice = input('Data slot to download: ')
         if choice == '0':
-            return
+            return data
         else:
             try:
                 choice = int(choice)
@@ -436,6 +422,8 @@ def download_data():
         else:
             for slot in data.keys():
                 myFluke.download_data(data[slot]['name'])
+                
+    return data
 
 def initiate_scan():
     myFluke.initiate_scan()
@@ -483,6 +471,8 @@ if __name__=='__main__':
         #sys.exit()
         select_com()
     
+    result = None
+    
     while True:
         print('')
         print('')
@@ -512,7 +502,7 @@ if __name__=='__main__':
         
         action = options.get(choice)['action']
         try:
-            action()
+            result = action()
         except LoopBreak:
             break
         except serial.SerialException:
