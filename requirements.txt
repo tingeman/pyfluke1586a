@@ -1,0 +1,4 @@
+ntplib>=0.4.0
+numpy>=1.22
+pyserial>=3.5
+

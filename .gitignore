@@ -43,4 +43,7 @@ _ReSharper*/
 
 #project specific
 /background_info/
+/downloads/
+*.zip
+*.7z
 
